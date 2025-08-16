@@ -40,7 +40,7 @@ moodle-rag-assistant/
 ## ⚙️ Setup Instructions
 
  1. Clone the repository
-```bash
+bash
 git clone https://github.com/SHREYAS-RODEO/moodle-rag-assistant.git
 cd moodle-rag-assistant
 
@@ -137,7 +137,7 @@ Databases: SQLite (students, teachers, grades, attendance)
 
 
 ##👨‍💻 Author
-
+---
 Shreyas S Acharya
 Final-year Information Science Student @ NMIT
 
