@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Moodle RAG Assistant</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          keyframes: {
+            blink: {
+              '0%, 100%': { opacity: 1 },
+              '50%': { opacity: 0 },
+            },
+            fadeIn: {
+              '0%': { opacity: 0 },
+              '100%': { opacity: 1 }
+            }
+          },
+          animation: {
+            blink: 'blink 1s step-start infinite',
+            fadeIn: 'fadeIn 0.5s ease-out forwards',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::selection {
+      background-color: #c7d2fe;
+      color: #1e3a8a;
+    }
+    .bubble {
+      max-width: 100%;
+      background-color: #e0e7ff;
+      color: #1e3a8a;
+      padding: 12px 16px;
+      border-radius: 18px;
+      margin-bottom: 10px;
+      word-wrap: break-word;
+      animation: fadeIn 0.4s ease-in;
+    }
+    .bubble.dark {
+      background-color: #1e293b;
+      color: #f1f5f9;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 text-gray-900 transition-colors duration-300 ease-in-out font-sans dark:bg-gray-900 dark:text-gray-100">
+
+  <div class="max-w-3xl mx-auto mt-10 p-6 bg-white dark:bg-gray-800 shadow-md rounded-lg transition-all duration-300 relative">
+
+    <!-- Title & Theme Toggle -->
+    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
+      <h1 class="text-2xl sm:text-3xl md:text-4xl font-extrabold text-indigo-700 dark:text-indigo-400 tracking-wide">
+        📘 Moodle RAG Assistant
+      </h1>
+      <button id="themeToggle"
+        class="text-sm px-3 py-1 rounded-full border border-gray-400 dark:border-gray-300 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+        🌗 Toggle Theme
+      </button>
+    </div>
+
+    <!-- Upload Section -->
+    <div class="mb-8">
+      <h2 class="text-xl font-semibold mb-2 text-indigo-600 dark:text-indigo-300">1️⃣ Upload your PDF</h2>
+      <form id="uploadForm" class="flex flex-col gap-3">
+        <input type="file" id="fileInput" name="file" accept="application/pdf" class="border p-2 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white transition" />
+        <button type="submit"
+          class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-transform transform hover:scale-105">
+          Upload
+        </button>
+      </form>
+    </div>
+
+    <!-- Query Section -->
+    <div class="mb-8">
+      <h2 class="text-xl font-semibold mb-2 text-indigo-600 dark:text-indigo-300">2️⃣ Ask a Question</h2>
+
+      <div class="mb-3">
+        <label class="mr-4 font-medium">Choose Query Type:</label>
+        <label class="mr-4"><input type="radio" name="queryType" value="structured"> 📊 Structured</label>
+        <label><input type="radio" name="queryType" value="unstructured" checked> 📄 Unstructured</label>
+      </div>
+
+      <div id="dbDropdown" class="mb-3 hidden">
+        <label class="block mb-1 font-medium">Select Database:</label>
+        <select id="dbSelect" class="border p-2 rounded w-full dark:bg-gray-700 dark:border-gray-600 dark:text-white transition">
+          <option value="">-- Choose a database --</option>
+          <option value="students">Students</option>
+          <option value="teachers">Teachers</option>
+          <option value="grades">Grades</option>
+          <option value="attendance">Attendance</option>
+        </select>
+      </div>
+
+      <div class="flex gap-2 flex-wrap">
+        <input type="text" id="queryInput" placeholder="Enter your query..."
+          class="flex-1 border p-2 rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white transition min-w-[220px]"/>
+        <button id="queryButton"
+          class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-transform transform hover:scale-105">
+          Submit
+        </button>
+        <button id="clearBtn" class="text-sm text-red-500 dark:text-red-400 hover:underline">Clear</button>
+      </div>
+    </div>
+
+    <!-- Response Section -->
+    <div>
+      <h2 class="text-xl font-semibold mb-2 text-indigo-600 dark:text-indigo-300">🧠 Assistant Response</h2>
+      <div class="space-y-4" id="chatBox"></div>
+      <canvas id="chartCanvas" class="w-full mt-4 hidden"></canvas>
+    </div>
+
+    <!-- History Section -->
+    <div class="mt-6">
+      <h2 class="text-lg font-medium mb-2 text-indigo-600 dark:text-indigo-300">🕘 Previous Queries</h2>
+      <ul id="historyList" class="text-sm space-y-1 list-disc list-inside text-gray-700 dark:text-gray-300"></ul>
+    </div>
+  </div>
+
+  <script>
+    const queryInput = document.getElementById("queryInput");
+    const queryButton = document.getElementById("queryButton");
+    const dbDropdown = document.getElementById("dbDropdown");
+    const dbSelect = document.getElementById("dbSelect");
+    const queryRadios = document.getElementsByName("queryType");
+    const uploadForm = document.getElementById("uploadForm");
+    const chatBox = document.getElementById("chatBox");
+    const themeToggle = document.getElementById("themeToggle");
+    const clearBtn = document.getElementById("clearBtn");
+    const historyList = document.getElementById("historyList");
+    const chartCanvas = document.getElementById("chartCanvas");
+    let myChart = null;
+
+    themeToggle.onclick = () => document.documentElement.classList.toggle("dark");
+
+    queryRadios.forEach(r => r.addEventListener("change", () => {
+      const val = document.querySelector('input[name="queryType"]:checked').value;
+      dbDropdown.classList.toggle("hidden", val !== "structured");
+    }));
+
+    uploadForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const file = document.getElementById("fileInput").files[0];
+      if (!file) return addBubble("⚠️ Please select a PDF file.");
+      addBubble("📤 Uploading...");
+      const formData = new FormData();
+      formData.append("file", file);
+      try {
+        const res = await fetch("http://127.0.0.1:5000/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        addBubble(res.ok ? `✅ Upload: ${data.message}` : `⚠️ Upload error: ${data.message || data.error}`);
+      } catch {
+        addBubble("❌ Upload failed. Backend may be offline.");
+      }
+    };
+
+    queryButton.onclick = async () => {
+      const query = queryInput.value.trim();
+      const type = document.querySelector('input[name="queryType"]:checked').value;
+      const db = dbSelect.value;
+      if (!query) return addBubble("⚠️ Please enter a query.");
+      const thinking = addBubble("🤖 Thinking...", true);
+      try {
+        const res = await fetch(`http://127.0.0.1:5000/${type === "structured" ? "structured-query" : "query"}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(type === "structured" ? { db, query } : { query })
+        });
+        const data = await res.json();
+        thinking.remove();
+        if (res.ok) {
+          const content = data.response;
+          if (isChartJson(content)) {
+            renderChart(JSON.parse(content));
+          } else {
+            chartCanvas.classList.add("hidden");
+            addBubble(content);
+          }
+        } else {
+          addBubble(`❌ ${data.error || "Query failed"}`);
+        }
+        addToHistory(query);
+        saveHistory();
+      } catch {
+        thinking.remove();
+        addBubble("❌ Query failed. Backend may be offline.");
+      }
+    };
+
+    clearBtn.onclick = () => {
+      queryInput.value = "";
+      chatBox.innerHTML = "";
+    };
+
+    function addBubble(text, temporary = false) {
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${document.documentElement.classList.contains("dark") ? "dark" : ""}`;
+      bubble.innerHTML = text;
+      chatBox.appendChild(bubble);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      return temporary ? bubble : null;
+    }
+
+    function addToHistory(query) {
+      const li = document.createElement("li");
+      li.textContent = query;
+      historyList.prepend(li);
+    }
+
+    function saveHistory() {
+      const history = [];
+      document.querySelectorAll("#historyList li").forEach(li => history.push(li.textContent));
+      localStorage.setItem("queryHistory", JSON.stringify(history));
+    }
+
+    function loadHistory() {
+      const history = JSON.parse(localStorage.getItem("queryHistory") || "[]");
+      historyList.innerHTML = "";
+      history.forEach(q => addToHistory(q));
+    }
+
+    function isChartJson(str) {
+      try {
+        const parsed = JSON.parse(str);
+        return parsed && parsed.type && parsed.data && parsed.options;
+      } catch {
+        return false;
+      }
+    }
+
+    function renderChart(config) {
+      chartCanvas.classList.remove("hidden");
+      if (myChart) myChart.destroy();
+      myChart = new Chart(chartCanvas, config);
+    }
+
+    loadHistory();
+  </script>
+</body>
+</html>
